@@ -22,6 +22,18 @@ class PathPlanner:
         self.distance_log_in = rospy.Publisher('distance_error_in', Float32, queue_size=1)
         self.distance_log_out = rospy.Publisher('distance_error_out', Float32, queue_size=1)
         
+    def find_nearest_waypoint(self, path, curX, curY):
+        minDist = float("inf")
+        nearest_idx = 0
+        for i, pose in enumerate(path.poses):
+            dx = curX - pose.pose.position.x
+            dy = curY - pose.pose.position.y
+            dist = sqrt(dx*dx + dy*dy)
+            if dist < minDist:
+                nearest_idx = i
+                minDist = dist
+        return nearest_idx, minDist        
+        
     def localization(self, odom, lane):
         """
         Publish distance errors for debugging and monitoring.
@@ -30,32 +42,21 @@ class PathPlanner:
         curX = odom.pose.pose.position.x
         curY = odom.pose.pose.position.y
         
-        temp = Float32()
-        minDist = float("inf")
-        for i in range(len(self.globalPathIn.poses)):
-            dx = curX-self.globalPathIn.poses[i].pose.position.x
-            dy = curY-self.globalPathIn.poses[i].pose.position.y
-            dist = sqrt(dx*dx+dy*dy)
-            if dist < minDist:
-                curWaypointIndxIn = i
-                minDist = dist
-        temp.data = minDist
-        self.distance_log_in.publish(temp)
-        self.waypointInfo.indxIn = curWaypointIndxIn
+        # 최근접 점 탐색 및 거리 계산
+        curWaypointIndxIn, minDistIn = self.find_nearest_waypoint(self.globalPathIn, curX, curY)
+        curWaypointIndxOut, minDistOut = self.find_nearest_waypoint(self.globalPathOut, curX, curY)
         
-        temp = Float32()
-        minDist = float("inf")
-        for i in range(len(self.globalPathOut.poses)):
-            dx = curX-self.globalPathOut.poses[i].pose.position.x
-            dy = curY-self.globalPathOut.poses[i].pose.position.y
-            dist = sqrt(dx*dx+dy*dy)
-            if dist < minDist:
-                curWaypointIndxOut = i
-                minDist = dist
-        temp.data = minDist
-        self.distance_log_out.publish(temp)
+        # distance_log Publish
+        temp1 = Float32()
+        temp2 = Float32()
+        temp1.data = minDistIn
+        temp2.data = minDistOut
+        self.distance_log_in.publish(temp1)
+        self.distance_log_out.publish(temp2)
+        
+        # waypointInfo Publish
+        self.waypointInfo.indxIn = curWaypointIndxIn       
         self.waypointInfo.indxOut = curWaypointIndxOut
-
         self.waypointInfoPub.publish(self.waypointInfo)
         
         return curWaypointIndxIn, curWaypointIndxOut
@@ -67,31 +68,26 @@ class SpeedDecision:
     def __init__(self):
         self.ctrlPub = rospy.Publisher('/ctrlCmd', CtrlCmd, queue_size=1)
         
+    def velocity_scale_path_dict(self, path_idx, add_speed, ref_velocity):
+        velocity_scale_map = {
+            0: (18.0 + add_speed) / ref_velocity,
+            1: (16.0 + add_speed) / ref_velocity,
+            2: 14.0 / ref_velocity,
+            3: (18.0 + add_speed) / ref_velocity,
+            4: 14.0 / ref_velocity,
+            5: (18.0 + add_speed) / ref_velocity,
+            6: 14.0 / ref_velocity,
+            7: 14.0 / ref_velocity,
+            8: 8.0 / ref_velocity
+        }
+        return velocity_scale_map.get(path_idx, "path_path_index_error")
+
     def control_speed(self, lidar_d_front, path_idx, velocity_scale_side):
 
         add_speed = 0.0
         ref_velocity = 18.0 + add_speed
 
-        if path_idx == 0:
-            velocity_scale_path = (18.0+add_speed)/ref_velocity
-        elif path_idx == 1:
-            velocity_scale_path = (16.0+add_speed)/ref_velocity    
-        elif path_idx == 2:
-            velocity_scale_path = 14.0/ref_velocity
-        elif path_idx == 3:
-            velocity_scale_path = (18.0+add_speed)/ref_velocity
-        elif path_idx == 4:
-            velocity_scale_path = 14.0/ref_velocity
-        elif path_idx == 5:
-            velocity_scale_path = (18.0+add_speed)/ref_velocity
-        elif path_idx == 6:
-            velocity_scale_path = 14.0/ref_velocity
-        elif path_idx == 7:
-            velocity_scale_path = 14.0/ref_velocity
-        elif path_idx == 8:
-            velocity_scale_path = 8.0/ref_velocity
-        else:
-            print("path_path_index_error")
+        velocity_scale_path = self.velocity_scale_path_dict(path_idx, add_speed, ref_velocity)
         
         min_v = 6.0 * velocity_scale_side
         max_v = 18.0 * velocity_scale_side * velocity_scale_path
@@ -182,50 +178,38 @@ class SteeringDecision:
     """
     def __init__(self, numGlobalPathIn, numGloablPathOut, globalPathIn, globalPathOut):
         self.carLength = 1.3
+        self.lfdPointidx = 1
         self.lfdPub = rospy.Publisher('/lfd', Odometry, queue_size=1)
         self.pathInfo = {1 : [numGlobalPathIn, globalPathIn], 2 : [numGloablPathOut, globalPathOut]}
+        self.lfd_base_values = {
+            0: (0.3841, 5.85),
+            1: (0.675, 2.875),
+            2: (0.3841, 5.85),
+            3: (0.675, 2.875),
+            4: (0.3841, 5.85),
+            5: (0.675, 2.875),
+            6: (1.035, 0.275),
+            7: (0.3841, 5.85),
+            8: (0.3841, 5.85)
+        }
+        
+    def calculate_lfd(self, velocity, path_idx):
+        if path_idx in self.lfd_base_values:
+            factor, offset = self.lfd_base_values[path_idx]
+            return max((velocity / 3.6) * factor + offset, 6 / 3.6)
+        else:
+            print("path path_index error")
+            return None
 
     def purePursuit(self, odom, lane, velocity, heading, path_idx, curWaypointIndxIn, curWaypointIndxOut):
         velocity /= 3.6   # m/s
         curX = odom.pose.pose.position.x
         curY = odom.pose.pose.position.y
         bound = 150
-
-        lfdPointidx = 1
-        if(path_idx == 0 or path_idx == 1):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.3841+5.85
-        elif(path_idx == 2):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.675+2.875
-        elif(path_idx == 3):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.3841+5.85
-        elif(path_idx == 4):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.675+2.875
-        elif(path_idx == 5):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.3841+5.85
-        elif(path_idx == 6):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.675+2.875
-        elif(path_idx == 7):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*1.035+0.275
-        elif(path_idx == 8):
-            if(velocity<6/3.6):
-                velocity=6/3.6
-            lfd=(velocity)*0.3841+5.85
-        else:
-            print("path path_index error")
+        
+        lfd = self.calculate_lfd(velocity, path_idx)
+        if not lfd:
+            return None
 
         curWaypoint = curWaypointIndxIn if lane == 1 else curWaypointIndxOut
         if curWaypoint + bound >= self.pathInfo[lane][0]:
@@ -244,7 +228,7 @@ class SteeringDecision:
                 if dist >= lfd:
                     theta = atan2(ry, rx)
                     steering = -atan2(2 * self.carLength * sin(theta), lfd)
-                    lfdPointidx = i
+                    self.lfdPointidx = i
                     break
 
         # Look Forawrd Distance Publish
@@ -255,8 +239,8 @@ class SteeringDecision:
         lfdPoint.pose.pose.orientation.y = 0.0
         lfdPoint.pose.pose.orientation.z = 0.0
         lfdPoint.pose.pose.orientation.w = 1.0
-        lfdPoint.pose.pose.position.x = self.pathInfo[lane][1].poses[lfdPointidx].pose.position.x
-        lfdPoint.pose.pose.position.y = self.pathInfo[lane][1].poses[lfdPointidx].pose.position.y
+        lfdPoint.pose.pose.position.x = self.pathInfo[lane][1].poses[self.lfdPointidx].pose.position.x
+        lfdPoint.pose.pose.position.y = self.pathInfo[lane][1].poses[self.lfdPointidx].pose.position.y
         self.lfdPub.publish(lfdPoint)
         
         return steering
