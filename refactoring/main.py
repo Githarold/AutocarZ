@@ -3,7 +3,6 @@
 
 import rospy
 from sensor_data import LidarSensor, GPS, VehicleState
-from data_processing import LocalizationProcessor
 from decision_making import PathPlanner, SpeedDecision, SteeringDecision, LineChanger, MergeChecker
 from vehicle_control import VehicleControler
 from utilities import Logger, ConfigManager
@@ -14,20 +13,15 @@ class AutonomousVehicleController:
         # ROS 노드 초기화
         rospy.init_node("planner_vector", anonymous=False)
         
-        # Path file 불러오기
+        # 출발 Lane 설정
         self.lane = 1
-        numGlobalPathIn = 2223
-        numGloablPathOut = 2255
-
-        # 모듈 초기화
-        self.config_manager = ConfigManager()
-        self.localization_processor = LocalizationProcessor()
         
         # Global path 읽기
-        pathInFile = self.config_manager.get_path('in')
-        pathOutFile = self.config_manager.get_path('out')
-        self.globalPathIn = self.localization_processor.readPath(pathInFile)
-        self.globalPathOut = self.localization_processor.readPath(pathOutFile)
+        numGlobalPathIn = 2223
+        numGloablPathOut = 2255
+        self.config_manager = ConfigManager()
+        self.globalPathIn = self.config_manager.get_path('in')
+        self.globalPathOut = self.config_manager.get_path('out')
         
         # 모듈 초기화
         self.logger = Logger()              # 로깅 필요할 때만

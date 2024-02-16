@@ -3,6 +3,8 @@
 
 import rospy
 import rospkg
+from nav_msgs.msg import Path
+from geometry_msgs.msg import PoseStamped
 
 class Logger:
     """
@@ -40,7 +42,27 @@ class ConfigManager:
         Return file paths for 'in' and 'out' path types.
         """
         if pathType == 'in':
-            return self.pathInFile
+            return self.readPath(self.pathInFile)
         elif pathType == 'out':
-            return self.pathOutFile
+            return self.readPath(self.pathOutFile)
         
+    def readPath(self, fileName):
+        """
+        Read path data from a file.
+        """
+        path = Path()
+        path.header.frame_id = "/map"
+
+        with open(fileName, "r") as file:
+            lines = file.readlines()
+            for line in lines:
+                data = line.split()
+                pose = PoseStamped()
+                pose.pose.position.x = float(data[0])
+                pose.pose.position.y = float(data[1])
+                pose.pose.position.z = 0.0
+                pose.pose.orientation.w = float(data[2])
+                path.poses.append(pose)
+
+        return path
+    
