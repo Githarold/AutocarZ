@@ -202,7 +202,6 @@ class SteeringDecision:
             return None
 
     def purePursuit(self, odom, lane, velocity, heading, path_idx, curWaypointIndxIn, curWaypointIndxOut):
-        velocity /= 3.6   # m/s
         curX = odom.pose.pose.position.x
         curY = odom.pose.pose.position.y
         bound = 150
@@ -249,7 +248,7 @@ class LineChanger:
     """
     Decision line change or not.
     """
-    def __init__(self)
+    def __init__(self):
         self.temp_velocity = 0
         self.lane_changing_flag = False
         self.stop_line_timer = rospy.Time.now().secs
