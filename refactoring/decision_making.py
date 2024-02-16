@@ -265,15 +265,11 @@ class LineChanger:
     """
     Decision line change or not.
     """
-    def __init__(self, globalPathIn, globalPathOut)
+    def __init__(self)
         self.temp_velocity = 0
         self.lane_changing_flag = False
         self.stop_line_timer = rospy.Time.now().secs
-        
-        self.globalPathIn = globalPathIn
-        self.globalPathOut = globalPathOut
-        
-    
+            
     def line_change_check(self, path_index, distance, target_velocity, lidar_front, lidar_side_front, lidar_side_back):
         is_change = False
         temp_velocity = target_velocity
@@ -314,23 +310,10 @@ class LineChanger:
         if target_velocity > self.temp_velocity:
             target_velocity = max(self.temp_velocity, 7)
         
-        if self.lane == 1:
-            dx = self.globalPathIn.poses[self.curWaypointIndxIn].pose.position.x - self.odom.pose.pose.position.x
-            dy = self.globalPathIn.poses[self.curWaypointIndxIn].pose.position.y - self.odom.pose.pose.position.y
-            dis = sqrt(dx*dx + dy*dy)
-            if dis < 0.3:
-                done_flag = True
-                
-        else:
-            dx = self.globalPathOut.poses[self.curWaypointIndxOut].pose.position.x - self.odom.pose.pose.position.x
-            dy = self.globalPathOut.poses[self.curWaypointIndxOut].pose.position.y - self.odom.pose.pose.position.y
-            dis = sqrt(dx*dx + dy*dy)
-            if dis < 0.3:
-                return True
-            else:
-                return False
+        if distance < 0.3:
+            done_flag = True
         
-        return done_flag, target_velocity
+        return target_velocity, done_flag
 
     def line_change_init(self):
         self.line_change_flag = False

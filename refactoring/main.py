@@ -37,7 +37,7 @@ class AutonomousVehicleController:
         self.path_planner = PathPlanner(self.globalPathIn, self.globalPathOut)
         self.speed_decision = SpeedDecision()
         self.steering_decision = SteeringDecision(numGlobalPathIn, numGloablPathOut, self.globalPathIn, self.globalPathOut)
-        self.line_changer = LineChanger(self.globalPathIn, self.globalPathOut)
+        self.line_changer = LineChanger()
         self.merge_checker = MergeChecker()
         self.vehicle_control = VehicleControler()
 
@@ -65,7 +65,7 @@ class AutonomousVehicleController:
                 
                 # 4. 병합구간 확인 및 차선 변경
                 velocity_scale_side = self.merge_checker.merge_check(curr_path_idx, lidar_side_front, lidar_side_back)
-                change, target_velocity = self.line_changer.line_change_check(curr_path_idx, distance, target_velocity, lidar_front, lidar_side_front, lidar_side_back)
+                change, _ = self.line_changer.line_change_check(curr_path_idx, distance, target_velocity, lidar_front, lidar_side_front, lidar_side_back)
                 self.lane = 1 if self.lane == 2 else 2 if change else self.lane
                 
                 # 5. 차량 제어 결정
